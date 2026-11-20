@@ -139,7 +139,7 @@ Step 2 — Install Jenkins, Docker and Trivy
 
 Script2 for Java,Jenkins,Docker
 
-vi script2.sh
+vi script1.sh
 
 #!/bin/bash
 
@@ -229,7 +229,7 @@ http://IP:8080
 Job 1: EKS Provision
 -----------------------
 
-Create a S3 private bucket for statefile : devsecops-netflix-reyaz-11
+Create a S3 private bucket for statefile : devsecops-netflix-kunal-11
 
 --> Install terraform plugin --> Manage Jenkins --> Plugins --> terraform
 
@@ -327,7 +327,7 @@ Open a new tab in the Browser and search for TMDB , signup first and login
 
 --> Settings --> API --> Create --> Developer --> Application Name = demo, rest bla bla bla
 
-cacc35c61cd76805987aca08d540f24e
+b60b54ae145d2d0e3fsdf34397796911302284
 
 
 Step 4 — Install Prometheus , Grafana and Node Exporter On the Ubuntu 24 t2.medium
@@ -614,7 +614,7 @@ username: admin, pwd: admin
 
 Click on Administration → Security → Users → Click on Tokens and Update Token → Give it a name netflix → and click on Generate Token
 
-squ_471332f12622fe33ea468ee5d0c2562ab1bab51b
+squ_c22e3c871293b253ee05d48d0a2b8adebf73d054
 
 Goto Jenkins Dashboard → Manage Jenkins → Credentials → Add Secret Text.
 Kind = Secret Text
