@@ -365,6 +365,17 @@ Before cleanup:
 
 ---
 
+## Author
+
+**Kunal Jadhav**
+
+- Portfolio: [kunalcloud.shop](https://kunalcloud.shop/)
+- GitHub: [@devkunaljadhav](https://github.com/devkunaljadhav)
+- LinkedIn: [Kunal Jadhav](https://www.linkedin.com/in/devkunaljadhav)
+- Email: [kunaljadhav1625@gmail.com](mailto:kunaljadhav1625@gmail.com)
+
+---
+
 ## License
 
 No license file is currently included in this repository. Add a license before using this project as a public reusable implementation.

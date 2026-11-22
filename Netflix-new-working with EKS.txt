@@ -1,973 +1,808 @@
+NETFLIX CLONE DEVSECOPS DEPLOYMENT ON AWS EKS
+=============================================
 
-Netflix Clone CI/CD with | Jenkins | Sonar | Trivy | OWASP | Docker| Kubernetes| Prometheus | Grafana | DevSecOps
-=================================================================================================================
+Project: Enterprise DevSecOps CI/CD Platform
+Author: Kunal Jadhav
+Portfolio: https://kunalcloud.shop/
+GitHub: https://github.com/devkunaljadhav
+LinkedIn: https://www.linkedin.com/in/devkunaljadhav
 
 
-1. Source & Version Control
---------------------------
-Developer Pushes Code → GitHub
+1. OVERVIEW
+-----------
 
-Webhook triggers Jenkins pipeline.
+This runbook describes how to build, scan, containerize, deploy, and monitor
+a Netflix-style application using Jenkins, SonarQube, Trivy, Docker, AWS EKS,
+Terraform, Prometheus, and Grafana.
 
-2. CI/CD Orchestration (Jenkins)
---------------------------------
-Jenkins handles all stages and notifies:
+Delivery flow:
 
-GitHub (for status)
+Developer -> GitHub -> Jenkins
+                         |
+                         +-> SonarQube analysis and quality gate
+                         +-> Trivy filesystem and image scans
+                         +-> Docker image build and push
+                         +-> Docker container deployment
+                         +-> AWS EKS Kubernetes deployment
+                         +-> Prometheus and Grafana monitoring
+                         +-> Email build notifications
 
-Mail (build notifications)
 
-Monitoring tools (for pipeline metrics)
-
-3. Security & Quality Gates
+2. SECURITY BEFORE STARTING
 ---------------------------
-Code Quality: SonarQube for static analysis
 
-Dependencies Check: NPM Audit / OWASP Dependency Check
+This is an infrastructure and learning environment. Do not use administrator
+IAM permissions or embed real credentials in Jenkinsfiles or Git repositories.
 
-Vulnerability Scanning:
+Replace every placeholder such as <DOCKER-USERNAME>, <REGION>, <CLUSTER-NAME>,
+<TMDB-API-KEY>, and <JENKINS-URL> before running the commands.
 
-Trivy for file scans
+Store these values in Jenkins Credentials:
 
-Docker image scanning
+- Docker Hub username and password or access token
+- SonarQube secret token
+- SMTP username and app password
+- TMDB API key
+- AWS credentials or an instance IAM role
+- Kubernetes kubeconfig file
 
-OWASP ZAP or similar for dynamic analysis
+Rotate any credential that has already been committed to a repository or
+shared in a log. SonarQube, Jenkins, Grafana, Prometheus, and AWS security
+groups should not be publicly accessible unless explicitly protected.
 
-4. Build & Containerization
-----------------------------
-Jenkins triggers:
 
-Docker build
+3. INFRASTRUCTURE REQUIREMENTS
+------------------------------
 
-Docker push to registry
+Provision:
 
-Image scan post-push
+- Ubuntu 24.04 LTS Jenkins EC2 instance: minimum t3.large with 50 GB storage
+- Ubuntu 24.04 LTS monitoring EC2 instance: t3.medium
+- AWS account with permissions for EC2, EKS, IAM, VPC, ELB, and S3
+- A private S3 bucket for Terraform state
+- GitHub repository containing the application and Kubernetes manifests
 
-5. Deployment
---------------
-Container Deployment: Docker run on VMs or services
+Install on the Jenkins host:
 
-Orchestration: Kubernetes deploy (Helm or kubectl)
+- Java 21
+- Jenkins
+- Docker Engine
+- Docker Compose plugin
+- Terraform
+- kubectl
+- AWS CLI v2
+- Trivy
+- Git
 
-Monitoring: Prometheus + Grafana (or other tools)
 
-Flow Overview
--------------
-
-DEVELOPER → GitHub → Jenkins CI/CD
-                     ├─ Code Analysis (SonarQube)
-                     ├─ Dependency Check (NPM Audit)
-                     ├─ Trivy File Scan
-                     ├─ OWASP Scan
-                     ├─ Docker Build + Push
-                     ├─ Image Scan
-                     └─ Deployment
-                          ├─ Docker Container
-                          └─ Kubernetes Cluster
-                            └─ Monitoring (Prometheus/Grafana)
-                            └─ Alerts (Mail/Slack/etc.)
-
-
-
-Steps:-
-
-Step 1 — Launch an Ubuntu(24.04) T2 Large Instance with 50GB, create IAM role and attach admin permissions
-
-Step 2 — Install Jenkins, Docker and Trivy. Create a Sonarqube Container using Docker.
-
-Step 3 — Create a TMDB API Key.
-
-Step 4 — Install Prometheus and Grafana On the new Server.
-
-Step 5 — Install the Prometheus Plugin and Integrate it with the Prometheus server.
-
-Step 6 — Email Integration With Jenkins and Plugin setup.
-
-Step 7 — Install Plugins like JDK, Sonarqube Scanner, Nodejs, and OWASP Dependency Check.
-
-Step 8 — Create a Pipeline Project in Jenkins using a Declarative Pipeline
-
-Step 9 — Install OWASP Dependency Check Plugins
-
-Step 10 — Docker Image Build and Push
-
-Step 11 — Deploy the image using Docker
-
-Step 12 — Setup AWS EKS with Terraform
-
-Step 13 — Access the Netflix app on the Browser.
-
-Step 14 — Terminate the AWS EC2 Instances.
-
-
-Step 1: Setting up AWS EC2 Instance
-----------------------------------
-Creating an EC2 instance t2.large with Ubuntu 24 AMI, t2.large, and 50 GB storage
-
---> Attach Admin role to the EC2 instance
-
-Script 1 for Terraform,kubectl,Aws cli
-
-vi script1.sh
-
-#!/bin/bash
-#install terraform
-sudo apt install wget -y
-wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt update && sudo apt install terraform
-
-#install Kubectl on Jenkins
-sudo apt update
-sudo apt install curl -y
-curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
-sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-kubectl version --client
-
-#install Aws cli
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-sudo apt-get install unzip -y
-unzip awscliv2.zip
-sudo ./aws/install
-
-=======================================================
-
-
-
-Step 2 — Install Jenkins, Docker and Trivy
--------------------------------------------
-
-Script2 for Java,Jenkins,Docker
-
-vi script1.sh
-
-#!/bin/bash
-
-set -e
-
-echo "=============================="
-echo " Jenkins WAR Auto Setup Script"
-echo "=============================="
-
-# Update system
-sudo apt update -y
-
-# Install Java 21, wget, curl
-sudo apt install -y openjdk-21-jdk wget curl
-
-# Verify Java
-java -version
-
-# Create Jenkins directory
-sudo mkdir -p /opt/jenkins
-cd /opt/jenkins
-
-# Download Jenkins WAR
-if [ ! -f jenkins.war ]; then
-  echo "Downloading Jenkins WAR..."
-  wget https://get.jenkins.io/war/2.552/jenkins.war
-else
-  echo "Jenkins WAR already exists"
-fi
-
-# Permissions
-sudo chmod 755 jenkins.war
-
-# Run Jenkins in background
-echo "Starting Jenkins in background..."
-nohup java -Djava.net.preferIPv4Stack=true -jar /opt/jenkins/jenkins.war \
-> /opt/jenkins/jenkins.log 2>&1 &
-
-sleep 5
-
-# Show status
-echo "Jenkins process:"
-ps -ef | grep jenkins.war | grep -v grep
-
-echo "=============================="
-echo " Jenkins started successfully "
-echo " URL: http://<SERVER-IP>:8080"
-echo " Log: /opt/jenkins/jenkins.log"
-echo "=============================="
-
-#install docker
-# Add Docker's official GPG key:
-sudo apt-get update
-sudo apt-get install ca-certificates curl gnupg -y
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-# Add the repository to Apt sources:
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
-sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-sudo usermod -aG docker ubuntu
-newgrp docker
-
-===========================================
-
-http://ip:8080
-
-vi trivy.sh
-
-sudo apt-get install wget apt-transport-https gnupg lsb-release -y
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-sudo apt-get update
-sudo apt-get install trivy -y
-apt install -y libatomic1
-
-
-http://IP:8080
-
-
-
-
-Job 1: EKS Provision
------------------------
-
-Create a S3 private bucket for statefile : devsecops-netflix-kunal-11
-
---> Install terraform plugin --> Manage Jenkins --> Plugins --> terraform
-
-let’s find the path to our Terraform (we will use it in the tools section of Terraform)
-
-In EC2 instance run the below command
-
-which terraform 
-
-Now --> Manage Jenkins –> Tools
-
-Terraform --> Name: terraform, uncheck install automatically , install directory = /usr/bin/
-
-Now create a new pipeline job for the Eks provision
+4. INSTALL TERRAFORM, KUBECTL, AND AWS CLI
 ------------------------------------------
 
-New Item --> Pipeline --> EKSJOB 
-
-This project is parameterized -- Choice Parameter
-Name: action
-choices: 
- apply
- destroy
-
-pipeline{
-    agent any
-    stages {
-        stage('Checkout from Git'){
-            steps{
-                git branch: 'main', url: 'https://github.com/ReyazShaik/devsecops-netflix.git'
-            }
-        }
-        stage('Terraform version'){
-             steps{
-                 sh 'terraform --version'
-             }
-        }
-        stage('Terraform init'){
-             steps{
-                 dir('EKS_TERRAFORM') {
-                      sh 'terraform init'
-                   }
-             }
-        }
-        stage('Terraform validate'){
-             steps{
-                 dir('EKS_TERRAFORM') {
-                      sh 'terraform validate'
-                   }
-             }
-        }
-        stage('Terraform plan'){
-             steps{
-                 dir('EKS_TERRAFORM') {
-                      sh 'terraform plan'
-                   }
-             }
-        }
-        stage('Terraform apply/destroy'){
-             steps{
-                 dir('EKS_TERRAFORM') {
-                      sh 'terraform ${action} --auto-approve'
-                   }
-             }
-        }
-    }
-}
-
-Run the Pipeline
-
-aws eks list-clusters --region ap-south-1
-
-aws eks update-kubeconfig --region ap-south-1 --name EKS_CLUSTER
-
-
-Now Run sonarqube container
-=============================
-
-sudo chmod 777 /var/run/docker.sock
-systemctl daemon-reload
-systemctl restart docker.service
-
-docker run -d --name sonar -p 9000:9000 sonarqube:lts-community
-
-http://IP:9000
-
-
-
-Step 3: Create a TMDB API Key to get the movie data automatically from their database
-=====================================================================================
-
-Next, we will create a TMDB API key
-
-Open a new tab in the Browser and search for TMDB , signup first and login
-
---> Settings --> API --> Create --> Developer --> Application Name = demo, rest bla bla bla
-
-b60b54ae145d2d0e3fsdf34397796911302284
-
-
-Step 4 — Install Prometheus , Grafana and Node Exporter On the Ubuntu 24 t2.medium
-===========================================================
-
-Launch a new Ubuntu 24 t2.medium for Promo and Grafana
-
-Install Promotheus
-=================
-
-lets create a new user called system only for Grafana 
-
-vi promo.sh
-
-sudo apt update
-sudo useradd --system --no-create-home --shell /bin/false prometheus
-wget https://github.com/prometheus/prometheus/releases/download/v2.47.1/prometheus-2.47.1.linux-amd64.tar.gz
-tar -xvf prometheus-2.47.1.linux-amd64.tar.gz
-sudo mkdir -p /data /etc/prometheus
-cd prometheus-2.47.1.linux-amd64/
-sudo mv prometheus promtool /usr/local/bin/
-sudo mv consoles/ console_libraries/ /etc/prometheus/
-sudo mv prometheus.yml /etc/prometheus/prometheus.yml
-sudo chown -R prometheus:prometheus /etc/prometheus/ /data/
-cd
-rm -rf prometheus-2.47.1.linux-amd64.tar.gz
-prometheus --version
+Run on the Jenkins EC2 instance:
 
----------------------------------------------------------
+    sudo apt update
+    sudo apt install -y curl wget unzip gnupg apt-transport-https
 
-sudo vi /etc/systemd/system/prometheus.service
+    # Terraform
+    wget -O- https://apt.releases.hashicorp.com/gpg |
+      sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 
-[Unit]
-Description=Prometheus
-Wants=network-online.target
-After=network-online.target
-StartLimitIntervalSec=500
-StartLimitBurst=5
-[Service]
-User=prometheus
-Group=prometheus
-Type=simple
-Restart=on-failure
-RestartSec=5s
-ExecStart=/usr/local/bin/prometheus \
-  --config.file=/etc/prometheus/prometheus.yml \
-  --storage.tsdb.path=/data \
-  --web.console.templates=/etc/prometheus/consoles \
-  --web.console.libraries=/etc/prometheus/console_libraries \
-  --web.listen-address=0.0.0.0:9090 \
-  --web.enable-lifecycle
-[Install]
-WantedBy=multi-user.target
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+      https://apt.releases.hashicorp.com $(lsb_release -cs) main" |
+      sudo tee /etc/apt/sources.list.d/hashicorp.list
 
----------------------------------
+    sudo apt update
+    sudo apt install -y terraform
 
-sudo systemctl enable prometheus
+    # kubectl
+    curl -LO "https://dl.k8s.io/release/$(curl -Ls \
+      https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    kubectl version --client
 
-sudo systemctl start prometheus
+    # AWS CLI
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+      -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
+    aws --version
 
-sudo systemctl status prometheus
 
-journalctl -u prometheus -f --no-pager   [to check logs]
+5. INSTALL JAVA, JENKINS, AND DOCKER
+------------------------------------
 
-http://ip:9090
+Run on the Jenkins EC2 instance:
 
-Install Node Exporter
-=====================
+    sudo apt update
+    sudo apt install -y openjdk-21-jdk curl ca-certificates gnupg
 
-vi nodeexp.sh
+Jenkins WAR installation:
 
-sudo useradd --system --no-create-home --shell /bin/false node_exporter
-wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
-tar -xvf node_exporter-1.6.1.linux-amd64.tar.gz
-sudo mv node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/
-rm -rf node_exporter*
-node_exporter --version
+    sudo mkdir -p /opt/jenkins
+    cd /opt/jenkins
+    sudo wget https://get.jenkins.io/war-stable/latest/jenkins.war
+    sudo chmod 755 jenkins.war
+    nohup java -Djava.net.preferIPv4Stack=true \
+      -jar /opt/jenkins/jenkins.war \
+      >/opt/jenkins/jenkins.log 2>&1 &
 
+Open:
 
-sudo vi /etc/systemd/system/node_exporter.service
+    http://<JENKINS-HOST>:8080
 
-[Unit]
-Description=Node Exporter
-Wants=network-online.target
-After=network-online.target
-StartLimitIntervalSec=500
-StartLimitBurst=5
-[Service]
-User=node_exporter
-Group=node_exporter
-Type=simple
-Restart=on-failure
-RestartSec=5s
-ExecStart=/usr/local/bin/node_exporter \
-    --collector.logind
-[Install]
-WantedBy=multi-user.target
+Complete the Jenkins setup wizard and retrieve the initial administrator
+password from:
 
----------------------------------------------
+    sudo cat /opt/jenkins/secrets/initialAdminPassword
 
-sudo systemctl enable node_exporter
+Docker installation:
 
-sudo systemctl start node_exporter
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg |
+      sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
-sudo systemctl status node_exporter
+    echo "deb [arch=$(dpkg --print-architecture) \
+      signed-by=/etc/apt/keyrings/docker.gpg] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" |
+      sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-journalctl -u node_exporter -f --no-pager  [for any errors]
+    sudo apt update
+    sudo apt install -y docker-ce docker-ce-cli containerd.io \
+      docker-buildx-plugin docker-compose-plugin
+    sudo usermod -aG docker ubuntu
+    sudo systemctl enable docker
+    sudo systemctl restart docker
 
-============= dont do below ==============
-sudo vi /etc/prometheus/prometheus.yml  
+Log out and back in, or start a new login shell, before running Docker
+commands. Do not make the Docker socket world-writable.
 
-- job_name: node_export
-    static_configs:
-      - targets: ["localhost:9090"]
 
-promtool check config /etc/prometheus/prometheus.yml     [check if the config is valid.]
+6. INSTALL TRIVY
+----------------
 
-curl -X POST http://localhost:9090/-/reload          [POST request to reload the config.]
+    sudo apt install -y wget apt-transport-https gnupg lsb-release
+    wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key |
+      sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
 
-http://<ip>:9090/targets
+    echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] \
+      https://aquasecurity.github.io/trivy-repo/deb \
+      $(lsb_release -sc) main" |
+      sudo tee /etc/apt/sources.list.d/trivy.list
 
-==========================================
+    sudo apt update
+    sudo apt install -y trivy
+    trivy --version
 
-Install Grafana
-================
 
-vi Grafana.sh
+7. RUN SONARQUBE
+----------------
 
-sudo apt-get install -y apt-transport-https software-properties-common
-wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
-echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
-sudo apt-get update
-sudo apt-get -y install grafana
-sudo systemctl enable grafana-server
-sudo systemctl start grafana-server
-sudo systemctl status grafana-server
+Start SonarQube:
 
+    docker run -d --name sonar \
+      --restart unless-stopped \
+      -p 9000:9000 \
+      sonarqube:lts-community
 
+Open:
 
-http://13.233.215.35:9100 --> node exporter is working
-http://13.233.215.35:9090 --> Promo is working
+    http://<JENKINS-HOST>:9000
 
-http://Ip:3000 --> Grafana, username: admin, password: admin
+Change the initial administrator password immediately.
 
+Create a SonarQube project and token:
 
-To visualize metrics, you need to add a data source first.
+1. Open Administration -> Security -> Users.
+2. Generate a token for the Jenkins service account.
+3. Save the token in Jenkins as a Secret Text credential.
+4. In Jenkins, open Manage Jenkins -> System -> SonarQube servers.
+5. Add the SonarQube server name and URL.
+6. Configure the Jenkins server URL in the SonarQube webhook:
 
-Click Add data source and select Prometheus--> URL : http://localhost:9090  (as we have in same server)
+       http://<JENKINS-HOST>:8080/sonarqube-webhook/
 
-Let’s add Dashboard --> top right corner --> + --> import Dashboard paste this code 1860 and  --> promotheus --> click on load
+Recommended quality gate configuration:
 
+- Quality gate must pass for new bugs and vulnerabilities.
+- Quality gate must pass for code-smell and coverage targets required by policy.
 
-Step 5 — Install the Prometheus Plugin and Integrate it with the Jenkins Server
-===================================================================================
 
-Goto Manage Jenkins –> Plugins –> Available Plugins --> Prometheus and install it and restart
+8. TMDB APPLICATION API KEY
+---------------------------
 
-To create a static target, you need to add job_name with static_configs 
+1. Create or sign in to a TMDB developer account.
+2. Generate an API key for the application.
+3. Store the key in Jenkins as a Secret Text credential.
+4. Pass it to Docker using a Jenkins credential binding or build argument.
 
-Go to Prometheus server
+Example Jenkins environment binding:
 
-sudo vi /etc/prometheus/prometheus.yml
-
-  - job_name: 'jenkins'
-    metrics_path: '/prometheus'
-    static_configs:
-      - targets: ['<jenkins-ip>:8080']
-
-
-promtool check config /etc/prometheus/prometheus.yml
-
-
-
-sudo systemctl restart prometheus
-
-
-
-curl -X POST http://localhost:9090/-/reload
-
-http://<ip>:9090/targets
-
-Click On Dashboard –> + symbol –> Import Dashboard --> Use Id 9964 and click on load
-
-
-Step 6 — Email Integration With Jenkins and Plugin Setup
-===========================================================
-
-Install Email Extension Plugin in Jenkins
-
-Go to your Gmail and click on your profile
-
-Then click on Manage Your Google Account –> click on the security tab on the left side panel you will get this page(provide mail password).
-
-2-step verification should be enabled.
-
-Search for the word "app" in the search bar 
-
-App Name = Jenkins 
-
-guyyqkpaqhknshpk
-
-
-Once the plugin is installed in Jenkins, click on manage Jenkins –> configure system there under the E-mail Notification section configure the details
-
-E-mail Notification
-
-SMTP Server ---> smtp.gmail.com
-Advanced --> Use SMTP authentication
-Username = trainerreyaz@gmail.com
-password = guyyqkpaqhknshpk (the generated password not your gmail pwd)
-use ssl
-SMTP port = 465
-
-Test
-
-
-Click on Manage Jenkins–> credentials and add your mail username and generated password
-Kind = username and pwd
-username = trainerreyaz@gmail.com
-pwd= guyyqkpaqhknshpk (generated pwd)
-ID = mail
-Desc = mail
-
-
-This is to just verify the mail configuration
-
-Now under the Extended E-mail Notification section configure the details as shown in the below images
-
-
-Extended E-mail Notification
-SMTP server = smtp.gmail.com
-SMTP port = 465
-Advance = select mail
-use ssl
-Default triggers
-
-always
-failure-any
-
-
-
-Step 7 — Install Plugins like JDK, Sonarqube Scanner, NodeJs, OWASP Dependency Check
-===================================================================================
-
-Install Plugin
-Goto Manage Jenkins →Plugins → Available Plugins →
-
-Install below plugins
-
-Eclipse Temurin Installer (Install without restart)
-
-SonarQube Scanner (Install without restart)
-
-NodeJs Plugin (Install Without restart)
-
-Docker
-
-Docker Commons
-
-Docker Pipeline
-
-Docker API
-
-Docker-build-step
-
-Goto Manage Jenkins → Tools → Install JDK(24) and NodeJs(24)→ Click on Apply and Save
-
-JDK installations --> Add JDK --> Name: jdk25, remove install oracle and add Install from adoptium.net and select jdk-25+36 (install automatically)
-
-SonarQube Scanner installations --> Add SonarQube Scanner --> Name=sonar-scanner, install automatically --> version: sonarscanner 7.2 latest
-
-NodeJS installations --> Add NodeJS --> Name = node25	 install automatically --> install from nodejs.org -> version nodejs 25.0.1
-
-Docker installations --> Name = docker --> install automatically --> Add installer --> select docker.com --> latest
-
-
-
-Configure Sonar Server in Manage Jenkins
-==========================================
-
-Go to your Sonarqube Server. http://ip:9000
-
-username: admin, pwd: admin
-
-Click on Administration → Security → Users → Click on Tokens and Update Token → Give it a name netflix → and click on Generate Token
-
-squ_c22e3c871293b253ee05d48d0a2b8adebf73d054
-
-Goto Jenkins Dashboard → Manage Jenkins → Credentials → Add Secret Text.
-Kind = Secret Text
-Scope = Global
-Secret = Paste the sonar key you copied
-ID = sonar-token
-Desc = sonar-token
-
-Adding sonar server details in Jenkins
----------------------------------
-
-Now, go to Dashboard → Manage Jenkins → System --> SonarQube servers
-Name = sonar-server
-Server URL = http://35.154.52.225:9000
-Server authentication token = sonar-token that you created in credentials
-
-In the Sonarqube Dashboard add a quality gate
-------------------------------------------
-
-Administration–> Configuration–>Webhooks --> create 
-Name = Jenkins
-URL = http://35.154.52.225:8080/sonarqube-webhook/
-Secret = empty
-
-Create a Pipeline 
-===================
-
-pipeline{
-    agent any
-    tools{
-        jdk 'jdk25'
-        nodejs 'node25'
-    }
     environment {
-        SCANNER_HOME=tool 'sonar-scanner'
+        TMDB_V3_API_KEY = credentials('tmdb-api-key')
     }
-    stages {
-        stage('clean workspace'){
-            steps{
-                cleanWs()
-            }
+
+Example Docker build command:
+
+    docker build \
+      --build-arg TMDB_V3_API_KEY="$TMDB_V3_API_KEY" \
+      -t <DOCKER-USERNAME>/netflix:latest .
+
+Do not commit the API key to source control or hard-code it in a Dockerfile.
+
+
+9. JENKINS REQUIRED PLUGIN CONFIGURATION
+-----------------------------------------
+
+Install these plugins from Manage Jenkins -> Plugins:
+
+- Eclipse Temurin Installer
+- SonarQube Scanner
+- NodeJS
+- Docker Pipeline
+- Docker Commons
+- Docker API
+- Kubernetes
+- Kubernetes Client API
+- Kubernetes CLI
+- Terraform
+- Email Extension
+- OWASP Dependency-Check
+- Prometheus Metrics
+
+Configure global tools:
+
+- JDK: name jdk21
+- Node.js: name node25
+- SonarQube Scanner: name sonar-scanner
+- Docker: name docker
+- Terraform: name terraform with installation directory /usr/bin/
+
+Create Jenkins credential entries:
+
+| Credential ID | Type | Purpose |
+|---|---|---|
+| docker-hub | Username and password | Docker registry |
+| sonar-token | Secret text | SonarQube |
+| tmdb-api-key | Secret text | Application API key |
+| k8s | Secret file | EKS kubeconfig |
+| mail-credentials | Username and password | SMTP notification |
+
+
+10. TERRAFORM EKS PROVISIONING
+------------------------------
+
+Create a private S3 bucket for the Terraform state:
+
+    devsecops-netflix-<unique-suffix>
+
+Enable:
+
+- Default encryption
+- Bucket versioning
+- Public access blocking
+- S3 state lifecycle controls
+- DynamoDB state locking if Terraform configuration requires it
+
+Configure Terraform with a backend or variables appropriate for this
+repository. Verify that the EKS Terraform directory contains the provider,
+cluster, node group, networking, IAM, and backend configuration.
+
+Create a Jenkins pipeline job named EKS-Provision:
+
+    pipeline {
+        agent any
+
+        parameters {
+            choice(name: 'ACTION', choices: ['apply', 'destroy'], description: 'Infrastructure action')
         }
-        stage('Checkout from Git'){
-            steps{
-                git branch: 'main', url: 'https://github.com/ReyazShaik/devsecops-netflix.git'
-            }
-        }
-        stage("Sonarqube Analysis "){
-            steps{
-                withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=netflix \
-                    -Dsonar.projectKey=netflix '''
+
+        stages {
+            stage('Checkout') {
+                steps {
+                    git branch: 'main',
+                        url: 'https://github.com/devkunaljadhav/enterprise-devsecops-cicd-platform.git'
                 }
             }
-        }
-        stage("quality gate"){
-           steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+
+            stage('Terraform Version') {
+                steps {
+                    sh 'terraform --version'
                 }
             }
-        }
-        stage('Install Dependencies') {
-            steps {
-                sh "npm install"
-            }
-        }
-    }
-    post {
-     always {
-        emailext attachLog: true,
-            subject: "'${currentBuild.result}'",
-            body: "Project: ${env.JOB_NAME}<br/>" +
-                "Build Number: ${env.BUILD_NUMBER}<br/>" +
-                "URL: ${env.BUILD_URL}<br/>",
-            to: 'trainerreyaz@gmail.com',
-            attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
-        }
-    }
-}
 
-Step 10 — Docker Image Build and Push
-======================================
-
-Goto Jenkins Dashboard → Manage Jenkins → Credentials
-Kind = Username and Password
-Scope = Global
-username = trainerreyaz
-password =
-ID = docker
-Desc = docker
-
-
-sudo chmod 777 /var/run/docker.sock
-systemctl daemon-reload
-systemctl restart docker.service
-
-After restart : start sonar 
-
-docker start ae06a3ac8c1e
-
-pipeline{
-    agent any
-    tools{
-        jdk 'jdk25'
-        nodejs 'node25'
-    }
-    environment {
-        SCANNER_HOME=tool 'sonar-scanner'
-    }
-    stages {
-        stage('clean workspace'){
-            steps{
-                cleanWs()
-            }
-        }
-        stage('Checkout from Git'){
-            steps{
-                git branch: 'main', url: 'https://github.com/ReyazShaik/devsecops-netflix.git'
-            }
-        }
-        stage("Sonarqube Analysis "){
-            steps{
-                withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=netflix \
-                    -Dsonar.projectKey=netflix '''
+            stage('Terraform Init') {
+                steps {
+                    dir('EKS_TERRAFORM') {
+                        sh 'terraform init'
+                    }
                 }
             }
-        }
-        stage("quality gate"){
-           steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+
+            stage('Terraform Validate') {
+                steps {
+                    dir('EKS_TERRAFORM') {
+                        sh 'terraform validate'
+                    }
                 }
             }
-        }
-        stage('Install Dependencies') {
-            steps {
-                sh "npm install"
+
+            stage('Terraform Plan') {
+                steps {
+                    dir('EKS_TERRAFORM') {
+                        sh 'terraform plan -out=tfplan'
+                    }
+                }
             }
-        }
-        stage('TRIVY FS SCAN') {
-            steps {
-                sh "trivy fs . > trivyfs.txt"
-            }
-        }
-        stage("Docker Build & Push"){
-            steps{
-                script{
-                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
-                       sh "docker build --build-arg TMDB_V3_API_KEY=cacc35c61cd76805987aca08d540f24e -t netflix ."
-                       sh "docker tag netflix trainerreyaz/netflix:latest "
-                       sh "docker push trainerreyaz/netflix:latest "
+
+            stage('Apply or Destroy') {
+                steps {
+                    dir('EKS_TERRAFORM') {
+                        sh "terraform ${params.ACTION} --auto-approve tfplan"
                     }
                 }
             }
         }
-        stage("TRIVY"){
-            steps{
-                sh "trivy image trainerreyaz/netflix:latest > trivyimage.txt"
-            }
-        }
-       stage('Deploy to container'){
-            steps{
-                sh 'docker run -d --name netflix -p 8081:80 trainerreyaz/netflix:latest'
-            }
-        }
     }
-    post {
-     always {
-        emailext attachLog: true,
-            subject: "'${currentBuild.result}'",
-            body: "Project: ${env.JOB_NAME}<br/>" +
-                "Build Number: ${env.BUILD_NUMBER}<br/>" +
-                "URL: ${env.BUILD_URL}<br/>",
-            to: 'trainerreyaz@gmail.com',
-            attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
+
+Important: Terraform's apply/destroy syntax with a saved plan is environment-
+dependent. For a destroy plan, generate a destroy plan separately. The safer
+production pattern is:
+
+    terraform apply -auto-approve tfplan
+    terraform destroy -auto-approve
+
+Run apply first. Verify the cluster:
+
+    aws eks list-clusters --region <REGION>
+    aws eks update-kubeconfig \
+      --region <REGION> \
+      --name <CLUSTER-NAME>
+    kubectl get nodes
+    kubectl get namespaces
+
+Never run destroy without exporting logs, reviewing dependencies, and
+confirming that the environment is disposable.
+
+
+11. INSTALL PROMETHEUS AND NODE EXPORTER
+-----------------------------------------
+
+Create a dedicated monitoring server and launch Ubuntu 24.04 LTS.
+
+Install Prometheus:
+
+    sudo useradd --system --no-create-home --shell /bin/false prometheus
+    wget https://github.com/prometheus/prometheus/releases/download/v2.47.1/\
+prometheus-2.47.1.linux-amd64.tar.gz
+    tar -xvf prometheus-2.47.1.linux-amd64.tar.gz
+    cd prometheus-2.47.1.linux-amd64
+
+    sudo mv prometheus promtool /usr/local/bin/
+    sudo mv consoles console_libraries /etc/prometheus/
+    sudo mv prometheus.yml /etc/prometheus/prometheus.yml
+    sudo mkdir -p /data
+    sudo chown -R prometheus:prometheus /etc/prometheus /data
+
+Create /etc/systemd/system/prometheus.service:
+
+    [Unit]
+    Description=Prometheus
+    Wants=network-online.target
+    After=network-online.target
+
+    [Service]
+    User=prometheus
+    Group=prometheus
+    Type=simple
+    Restart=on-failure
+    ExecStart=/usr/local/bin/prometheus \
+      --config.file=/etc/prometheus/prometheus.yml \
+      --storage.tsdb.path=/data \
+      --web.listen-address=0.0.0.0:9090 \
+      --web.enable-lifecycle
+
+    [Install]
+    WantedBy=multi-user.target
+
+Start and verify Prometheus:
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now prometheus
+    sudo systemctl status prometheus
+    promtool check config /etc/prometheus/prometheus.yml
+
+Open:
+
+    http://<MONITORING-HOST>:9090
+    http://<MONITORING-HOST>:9090/targets
+
+Install Node Exporter:
+
+    sudo useradd --system --no-create-home --shell /bin/false node_exporter
+    wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/\
+node_exporter-1.6.1.linux-amd64.tar.gz
+    tar -xvf node_exporter-1.6.1.linux-amd64.tar.gz
+    sudo mv node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/
+
+Create /etc/systemd/system/node_exporter.service:
+
+    [Unit]
+    Description=Node Exporter
+    Wants=network-online.target
+    After=network-online.target
+
+    [Service]
+    User=node_exporter
+    Group=node_exporter
+    ExecStart=/usr/local/bin/node_exporter \
+      --collector.logind
+    Restart=on-failure
+
+    [Install]
+    WantedBy=multi-user.target
+
+Start Node Exporter:
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now node_exporter
+    sudo systemctl status node_exporter
+
+Add these targets to /etc/prometheus/prometheus.yml:
+
+    scrape_configs:
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets:
+              - '<JENKINS-HOST>:9100'
+              - '<MONITORING-HOST>:9100'
+
+      - job_name: 'jenkins'
+        metrics_path: '/prometheus'
+        static_configs:
+          - targets:
+              - '<JENKINS-HOST>:8080'
+
+Reload Prometheus:
+
+    promtool check config /etc/prometheus/prometheus.yml
+    curl -X POST http://localhost:9090/-/reload
+
+
+12. INSTALL GRAFANA
+-------------------
+
+Run on the monitoring server:
+
+    sudo apt install -y apt-transport-https software-properties-common wget
+    sudo mkdir -p /etc/apt/keyrings
+    wget -q -O - https://packages.grafana.com/gpg.key |
+      sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+
+    echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] \
+      https://apt.grafana.com stable main" |
+      sudo tee /etc/apt/sources.list.d/grafana.list
+
+    sudo apt update
+    sudo apt install -y grafana
+    sudo systemctl enable --now grafana-server
+
+Open:
+
+    http://<MONITORING-HOST>:3000
+
+Change the administrator password immediately. Add Prometheus as a Grafana
+data source using:
+
+    http://localhost:9090
+
+Suggested dashboards:
+
+- Node Exporter Full: 1860
+- Jenkins: 9964
+
+
+13. CONFIGURE JENKINS EMAIL NOTIFICATIONS
+------------------------------------------
+
+Create a Gmail or organization SMTP app password. Do not use a normal account
+password.
+
+In Jenkins:
+
+1. Open Manage Jenkins -> System.
+2. Configure SMTP host, port, username, credentials, and TLS/SSL settings.
+3. Open Manage Jenkins -> Credentials.
+4. Add the SMTP username and app password as a credentials entry.
+5. Configure Extended Email Notification and test the configuration.
+
+Example SMTP settings:
+
+- SMTP server: smtp.gmail.com
+- SMTP port: 465
+- SSL: enabled
+- Credentials: mail-credentials
+
+Use organization-approved SMTP delivery for real environments.
+
+
+14. APPLICATION CI/CD JENKINS PIPELINE
+--------------------------------------
+
+Create a pipeline job that checks out the application repository and uses these
+stages:
+
+1. Clean workspace
+2. Checkout source
+3. SonarQube analysis
+4. SonarQube quality gate
+5. Install dependencies
+6. Trivy filesystem scan
+7. Docker build and push
+8. Trivy image scan
+9. Docker deployment
+10. Kubernetes deployment
+11. Email notification
+
+Example pipeline:
+
+    pipeline {
+        agent any
+
+        tools {
+            jdk 'jdk21'
+            nodejs 'node25'
         }
-    }
-}
 
-http://jenkinsip:8081
-
-IF Docker login Error
-----------------------
-
-systemctl edit docker.service
-
-[Service] 
-Environment=DOCKER_MIN_API_VERSION=1.24
-
-systemctl restart docker
-
-docker start sonar
-
-Step 11 — Kuberenetes Setup 
-===========================
-
-Let’s Update the kubeconfig
-============================
-
-Go to Jenkins instance and enter the below command
-
-aws eks update-kubeconfig --name EKS_CLUSTER --region ap-south-1
-
-cd
-
-cat .kube/config
-
-copy the entire content and save it as secret.txt in local machine
-
-kubectl get nodes
-
-Install Kubernetes Plugin
-----------------------
-
-Kubernetes Credentials
-Kubernetes Client API
-Kubernetes
-Kubernetes CLI
-
-goto manage Jenkins –> manage credentials –> Click on Jenkins global –> add credentials
-
-Kind= SEcret File
-choose = secret.txt
-ID: k8s
-desc : k8s
-
-
-
-docker ps -a
-
-delete Netflix container
-
-docker stop contid
-docker rm contid
-
-
-Now ready for final Pipeline
-=============================
-
-pipeline{
-    agent any
-    tools{
-        jdk 'jdk25'
-        nodejs 'node25'
-    }
-    environment {
-        SCANNER_HOME=tool 'sonar-scanner'
-    }
-    stages {
-        stage('clean workspace'){
-            steps{
-                cleanWs()
-            }
+        environment {
+            SCANNER_HOME = tool 'sonar-scanner'
+            DOCKER_IMAGE = '<DOCKER-USERNAME>/netflix'
         }
-        stage('Checkout from Git'){
-            steps{
-                git branch: 'main', url: 'https://github.com/ReyazShaik/devsecops-netflix.git'
-            }
-        }
-        stage("Sonarqube Analysis "){
-            steps{
-                withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=netflix \
-                    -Dsonar.projectKey=netflix '''
+
+        stages {
+            stage('Clean Workspace') {
+                steps {
+                    cleanWs()
                 }
             }
-        }
-        stage("quality gate"){
-           steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+
+            stage('Checkout') {
+                steps {
+                    git branch: 'main',
+                        url: 'https://github.com/<YOUR-GITHUB-USER>/<YOUR-APP-REPOSITORY>.git'
                 }
             }
-        }
-        stage('Install Dependencies') {
-            steps {
-                sh "npm install"
-            }
-        }
-        stage('TRIVY FS SCAN') {
-            steps {
-                sh "trivy fs . > trivyfs.txt"
-            }
-        }
-        stage("Docker Build & Push"){
-            steps{
-                script{
-                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
-                       sh "docker build --build-arg TMDB_V3_API_KEY=cacc35c61cd76805987aca08d540f24e -t netflix ."
-                       sh "docker tag netflix trainerreyaz/netflix:latest "
-                       sh "docker push trainerreyaz/netflix:latest "
+
+            stage('SonarQube Analysis') {
+                steps {
+                    withSonarQubeEnv('sonar-server') {
+                        sh '''
+                            $SCANNER_HOME/bin/sonar-scanner \
+                              -Dsonar.projectName=netflix \
+                              -Dsonar.projectKey=netflix
+                        '''
                     }
                 }
             }
-        }
-        stage("TRIVY"){
-            steps{
-                sh "trivy image trainerreyaz/netflix:latest > trivyimage.txt"
+
+            stage('Quality Gate') {
+                steps {
+                    waitForQualityGate(
+                        abortPipeline: true,
+                        credentialsId: 'sonar-token'
+                    )
+                }
             }
-        }
-       stage('Deploy to container'){
-            steps{
-                sh 'docker run -d --name netflix -p 3001:80 trainerreyaz/netflix:latest'
+
+            stage('Install Dependencies') {
+                steps {
+                    sh 'npm ci'
+                }
             }
-        }
-       stage('Deploy to kubernetes'){
-            steps{
-                script{
+
+            stage('Trivy Filesystem Scan') {
+                steps {
+                    sh 'trivy fs --severity HIGH,CRITICAL --exit-code 0 . > trivyfs.txt'
+                    archiveArtifacts artifacts: 'trivyfs.txt', fingerprint: true
+                }
+            }
+
+            stage('Docker Build and Push') {
+                steps {
+                    withCredentials([
+                        string(credentialsId: 'tmdb-api-key', variable: 'TMDB_V3_API_KEY')
+                    ]) {
+                        withDockerRegistry(
+                            credentialsId: 'docker-hub',
+                            toolName: 'docker'
+                        ) {
+                            sh '''
+                                docker build \
+                                  --build-arg TMDB_V3_API_KEY="$TMDB_V3_API_KEY" \
+                                  -t $DOCKER_IMAGE:$BUILD_NUMBER .
+                                docker push $DOCKER_IMAGE:$BUILD_NUMBER
+                            '''
+                        }
+                    }
+                }
+            }
+
+            stage('Trivy Image Scan') {
+                steps {
+                    sh 'trivy image --severity HIGH,CRITICAL --exit-code 0 \
+                        $DOCKER_IMAGE:$BUILD_NUMBER > trivyimage.txt'
+                    archiveArtifacts artifacts: 'trivyimage.txt', fingerprint: true
+                }
+            }
+
+            stage('Deploy to Docker') {
+                steps {
+                    sh '''
+                        docker rm -f netflix || true
+                        docker run -d --name netflix \
+                          -p 8081:80 \
+                          $DOCKER_IMAGE:$BUILD_NUMBER
+                    '''
+                }
+            }
+
+            stage('Deploy to EKS') {
+                steps {
                     dir('Kubernetes') {
-                        withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'k8s', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') {
-                                sh 'kubectl apply -f deployment.yml'
-                                sh 'kubectl apply -f service.yml'
+                        withKubeConfig(
+                            credentialsId: 'k8s',
+                            contextName: ''
+                        ) {
+                            sh 'kubectl apply -f deployment.yml'
+                            sh 'kubectl apply -f service.yml'
+                            sh 'kubectl rollout status deployment/netflix-app --timeout=5m'
+                            sh 'kubectl get pods,svc'
                         }
                     }
                 }
             }
         }
 
+        post {
+            always {
+                emailext(
+                    to: '<NOTIFICATION-EMAIL>',
+                    subject: "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: "Build: ${env.BUILD_URL}",
+                    attachLog: true,
+                    attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
+                )
+            }
+        }
     }
-}
 
 
-Note: in GitHub change the repo of yuours under Kubernetes deployment.yml
+15. DOCKER TROUBLESHOOTING
+--------------------------
 
-Note: if any error that container already exits
+If Jenkins cannot access Docker:
 
-docker ps -a
-docker stop contid
-docker rm contd
+    sudo systemctl daemon-reload
+    sudo systemctl restart docker
+    sudo usermod -aG docker jenkins
+    sudo systemctl restart jenkins
 
-and rerun the pipeline
+Verify:
 
-kubectl get all
-kubectl get svc #use anyone
+    docker ps
 
+Do not use:
 
-Patch to get load balancer
----------------------------
+    sudo chmod 777 /var/run/docker.sock
 
+It grants unrestricted access to the Docker daemon and effectively grants
+host-level privileges. Use Jenkins and Docker group permissions instead.
 
-kubectl patch svc netflix-app -n default -p '{"spec": {"type": "LoadBalancer", "externalIPs":["52.66.197.52"]}}'
-
-
-wait for 2 mins to work
-
-
-
-
+If Docker reports an API version mismatch, verify the Docker Engine and Jenkins
+Docker plugin versions, then remove temporary API overrides after confirming
+the compatibility fix.
 
 
+16. KUBERNETES TROUBLESHOOTING
+------------------------------
+
+Recreate the Jenkins kubeconfig:
+
+    aws eks update-kubeconfig \
+      --region <REGION> \
+      --name <CLUSTER-NAME>
+
+Copy ~/.kube/config to Jenkins as the k8s Secret File credential. The Jenkins
+service identity must have permission to access the EKS cluster.
+
+Verification commands:
+
+    kubectl get nodes
+    kubectl get pods -A
+    kubectl get deployments -A
+    kubectl get svc -A
+    kubectl describe pod <POD-NAME>
+    kubectl logs <POD-NAME>
+
+Remove a stopped Docker container:
+
+    docker ps -a
+    docker stop <CONTAINER-ID>
+    docker rm <CONTAINER-ID>
+
+To inspect or expose a LoadBalancer service:
+
+    kubectl get svc netflix-app
+    kubectl describe svc netflix-app
+
+Do not patch a service with a hard-coded public IP unless that IP is allocated
+to the AWS account and managed for the target load balancer.
 
 
+17. APPLICATION AND MONITORING VERIFICATION
+--------------------------------------------
+
+Verify these endpoints and resources:
+
+- Jenkins: http://<JENKINS-HOST>:8080
+- SonarQube: http://<JENKINS-HOST>:9000
+- Docker application: http://<JENKINS-HOST>:8081
+- Prometheus: http://<MONITORING-HOST>:9090
+- Prometheus targets: http://<MONITORING-HOST>:9090/targets
+- Grafana: http://<MONITORING-HOST>:3000
+- EKS application: AWS LoadBalancer DNS or Ingress URL
+
+Expected results:
+
+- Jenkins pipeline stages finish successfully.
+- SonarQube quality gate passes.
+- Trivy reports are archived.
+- Docker image is available in the configured registry.
+- EKS pods reach Running status.
+- LoadBalancer service receives an external hostname or address.
+- Prometheus lists Jenkins and Node Exporter targets as UP.
+- Grafana displays cluster and host metrics.
 
 
+18. CLEANUP
+-----------
+
+Before deleting resources:
+
+1. Export Jenkins logs, SonarQube results, and Trivy reports.
+2. Back up the Terraform state and release notes.
+3. Verify that no team member or other environment depends on the cluster.
+4. Remove application resources from EKS.
+5. Run the Terraform destroy pipeline or destroy plan.
+6. Remove public DNS records and security group rules.
+7. Delete monitoring servers and disposable EC2 instances.
+8. Rotate credentials used during the deployment.
+
+Recommended Kubernetes cleanup:
+
+    kubectl delete -f Kubernetes/service.yml
+    kubectl delete -f Kubernetes/deployment.yml
+
+Recommended Terraform cleanup:
+
+    cd EKS_TERRAFORM
+    terraform destroy -auto-approve
+
+
+19. OPERATIONAL CHECKLIST
+-------------------------
+
+Before production:
+
+[ ] No credentials or API keys are committed to Git.
+[ ] AWS IAM policies follow least privilege.
+[ ] Jenkins and SonarQube use private network access.
+[ ] S3 state is private, encrypted, and versioned.
+[ ] EKS RBAC and network policies are configured.
+[ ] Container images are pinned and signed.
+[ ] Kubernetes pod security is enforced.
+[ ] Trivy failures are treated according to security policy.
+[ ] Monitoring, alerting, and log retention are configured.
+[ ] Backup and disaster recovery procedures are documented.
+[ ] Cleanup and decommission procedures are tested.
